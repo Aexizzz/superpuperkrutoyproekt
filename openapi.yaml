@@ -1,0 +1,929 @@
+openapi: 3.0.3
+info:
+  title: Nuvio API
+  version: 1.0.0
+  description: |
+    Контракт между фронтендом Nuvio (React + Vite) и бэкендом.
+
+    **Базовый URL:** `/api` в dev (Vite проксирует на бэкенд), полный адрес — в `VITE_API_URL`.
+
+    **Авторизация:** JWT. `POST /auth/login` возвращает `accessToken` (живёт ~15 минут)
+    и `refreshToken` (~30 дней). Access-токен уходит в `Authorization: Bearer <token>`.
+    На 401 клиент один раз пробует `POST /auth/refresh`, затем разлогинивает пользователя.
+
+    **Ошибки:** любой ответ с кодом ≥ 400 имеет единое тело (см. `ApiError`).
+    Поле `fields` используется фронтендом для подсветки конкретных полей формы.
+
+    **Идемпотентность:** создание заказа принимает заголовок `Idempotency-Key`.
+servers:
+  - url: http://localhost:3000/api
+    description: Локальная разработка
+  - url: /api
+    description: Тот же хост (прод)
+
+tags:
+  - name: Auth
+    description: Регистрация, вход, сессия, профиль
+  - name: Products
+    description: Каталог. Чтение публичное, запись — только admin
+  - name: News
+    description: Статьи и новости. Чтение публичное, запись — только admin
+  - name: Orders
+    description: Заказы и оплата
+
+security:
+  - bearerAuth: []
+
+paths:
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Регистрация покупателя
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterInput'
+      responses:
+        '201':
+          description: Аккаунт создан, сессия открыта
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '409':
+          description: Почта уже занята (code = email_taken, fields.email)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Вход по почте и паролю
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginInput'
+      responses:
+        '200':
+          description: Успешный вход
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Неверная почта или пароль (code = invalid_credentials)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Обновить access-токен
+      security: []
+      description: |
+        Принимает refresh-токен в теле либо в httpOnly-cookie `refresh_token`.
+        Клиент вызывает этот эндпоинт автоматически при 401.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refreshToken:
+                  type: string
+      responses:
+        '200':
+          description: Новая пара токенов
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokens'
+        '401':
+          description: Refresh-токен недействителен или отозван
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Выход — отозвать refresh-токен
+      responses:
+        '204':
+          description: Сессия закрыта
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Текущий пользователь
+      description: Вызывается при старте приложения, если в хранилище есть токен.
+      responses:
+        '200':
+          description: Профиль
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    patch:
+      tags: [Auth]
+      summary: Изменить свой профиль
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProfilePatch'
+      responses:
+        '200':
+          description: Обновлённый профиль
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '409':
+          description: Почта занята другим аккаунтом
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /auth/change-password:
+    post:
+      tags: [Auth]
+      summary: Сменить пароль
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [currentPassword, newPassword]
+              properties:
+                currentPassword:
+                  type: string
+                newPassword:
+                  type: string
+                  minLength: 6
+      responses:
+        '204':
+          description: Пароль изменён
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /products:
+    get:
+      tags: [Products]
+      summary: Список товаров
+      security: []
+      parameters:
+        - name: category
+          in: query
+          schema:
+            $ref: '#/components/schemas/Category'
+        - name: q
+          in: query
+          description: Поиск по названию (регистронезависимый, подстрока)
+          schema:
+            type: string
+        - name: inStock
+          in: query
+          schema:
+            type: boolean
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [price_asc, price_desc, new]
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: Страница товаров
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductPage'
+    post:
+      tags: [Products]
+      summary: Создать товар (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductInput'
+      responses:
+        '201':
+          description: Создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /products/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Products]
+      summary: Один товар
+      security: []
+      responses:
+        '200':
+          description: Товар
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [Products]
+      summary: Изменить товар (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductInput'
+      responses:
+        '200':
+          description: Обновлён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    delete:
+      tags: [Products]
+      summary: Удалить товар (admin)
+      description: Мягкое удаление предпочтительно — на товар могут ссылаться заказы.
+      responses:
+        '204':
+          description: Удалён
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /news:
+    get:
+      tags: [News]
+      summary: Список статей
+      security: []
+      parameters:
+        - name: category
+          in: query
+          schema:
+            $ref: '#/components/schemas/NewsCategory'
+        - name: q
+          in: query
+          schema:
+            type: string
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: Страница статей (без поля sections — только превью)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NewsPage'
+    post:
+      tags: [News]
+      summary: Создать статью (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NewsInput'
+      responses:
+        '201':
+          description: Создана
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NewsItem'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /news/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [News]
+      summary: Одна статья
+      security: []
+      description: |
+        Сервер увеличивает `views` на 1. Дедупликация (один просмотр на сессию/IP
+        в течение N часов) — на стороне сервера.
+      responses:
+        '200':
+          description: Статья
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NewsItem'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [News]
+      summary: Изменить статью (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NewsInput'
+      responses:
+        '200':
+          description: Обновлена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NewsItem'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [News]
+      summary: Удалить статью (admin)
+      responses:
+        '204':
+          description: Удалена
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /orders:
+    get:
+      tags: [Orders]
+      summary: Мои заказы
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: Заказы текущего пользователя, новые первыми
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderPage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Orders]
+      summary: Создать заказ и оплатить
+      description: |
+        Сервер **сам** пересчитывает цены и итог по актуальному каталогу —
+        клиентским суммам не доверяем. Если товара нет в наличии или цена
+        изменилась, возвращается 409.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          description: UUID запроса; повтор с тем же ключом не создаёт второй заказ.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrderInput'
+      responses:
+        '201':
+          description: Заказ создан, оплата принята
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Нет в наличии или цена изменилась (code = stock_changed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /orders/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Orders]
+      summary: Один заказ
+      responses:
+        '200':
+          description: Заказ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /orders/{id}/cancel:
+    post:
+      tags: [Orders]
+      summary: Отменить заказ
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Заказ отменён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '409':
+          description: Заказ уже отправлен — отмена невозможна
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    Limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 20
+    Offset:
+      name: offset
+      in: query
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+
+  responses:
+    Unauthorized:
+      description: Нет или протух токен
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    Forbidden:
+      description: Недостаточно прав
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    NotFound:
+      description: Не найдено
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    ValidationError:
+      description: Ошибки валидации
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    RateLimited:
+      description: Слишком много попыток
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+
+  schemas:
+    Category:
+      type: string
+      enum: [iPhone, MacBook, iMac, AirPods, Apple Watch]
+
+    NewsCategory:
+      type: string
+      enum: [Инструкции, Обзоры, Советы, Подборки]
+
+    Role:
+      type: string
+      enum: [user, admin]
+
+    OrderStatus:
+      type: string
+      enum: [pending, paid, shipped, delivered, cancelled]
+      description: |
+        pending — ожидает оплаты, paid — оплачен, shipped — доставляется,
+        delivered — доставлен, cancelled — отменён.
+
+    Product:
+      type: object
+      required: [id, name, category, price, description, inStock]
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+          maxLength: 120
+        category:
+          $ref: '#/components/schemas/Category'
+        price:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Цена в рублях
+        image:
+          type: string
+          nullable: true
+          description: URL картинки; относительный путь от корня сайта тоже допустим
+        description:
+          type: string
+          maxLength: 300
+        detail:
+          type: string
+          nullable: true
+          maxLength: 300
+        inStock:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+
+    ProductInput:
+      type: object
+      required: [name, category, price, description]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        category:
+          $ref: '#/components/schemas/Category'
+        price:
+          type: integer
+          minimum: 1
+        description:
+          type: string
+          maxLength: 300
+        image:
+          type: string
+          nullable: true
+        detail:
+          type: string
+          nullable: true
+        inStock:
+          type: boolean
+          default: true
+
+    NewsSection:
+      type: object
+      required: [heading, paragraphs]
+      properties:
+        heading:
+          type: string
+          maxLength: 200
+        paragraphs:
+          type: array
+          items:
+            type: string
+
+    NewsItem:
+      type: object
+      required: [id, title, category, publishedAt, views, sections]
+      properties:
+        id:
+          type: integer
+          format: int64
+        title:
+          type: string
+          maxLength: 200
+        category:
+          $ref: '#/components/schemas/NewsCategory'
+        publishedAt:
+          type: string
+          format: date-time
+        views:
+          type: integer
+          minimum: 0
+        image:
+          type: string
+          nullable: true
+        gallery:
+          type: array
+          nullable: true
+          items:
+            type: string
+        sections:
+          type: array
+          items:
+            $ref: '#/components/schemas/NewsSection'
+
+    NewsInput:
+      type: object
+      required: [title, category, sections]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        category:
+          $ref: '#/components/schemas/NewsCategory'
+        sections:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/NewsSection'
+        image:
+          type: string
+          nullable: true
+        gallery:
+          type: array
+          nullable: true
+          items:
+            type: string
+        publishedAt:
+          type: string
+          format: date-time
+          description: Если не передан — текущее время
+
+    User:
+      type: object
+      required: [id, firstName, lastName, email, phone, role, bonuses]
+      properties:
+        id:
+          type: integer
+          format: int64
+        firstName:
+          type: string
+        lastName:
+          type: string
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+        role:
+          $ref: '#/components/schemas/Role'
+        bonuses:
+          type: integer
+          minimum: 0
+        createdAt:
+          type: string
+          format: date-time
+
+    ProfilePatch:
+      type: object
+      properties:
+        firstName:
+          type: string
+          minLength: 1
+        lastName:
+          type: string
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+
+    LoginInput:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 6
+
+    RegisterInput:
+      type: object
+      required: [firstName, lastName, email, phone, password]
+      properties:
+        firstName:
+          type: string
+          minLength: 1
+        lastName:
+          type: string
+          minLength: 1
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+          minLength: 10
+        password:
+          type: string
+          minLength: 6
+
+    AuthTokens:
+      type: object
+      required: [accessToken]
+      properties:
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
+          nullable: true
+          description: Если не отдаётся в теле — приходит httpOnly-cookie
+
+    AuthResponse:
+      allOf:
+        - $ref: '#/components/schemas/AuthTokens'
+        - type: object
+          required: [user]
+          properties:
+            user:
+              $ref: '#/components/schemas/User'
+
+    OrderItem:
+      type: object
+      required: [productId, name, price, quantity]
+      properties:
+        productId:
+          type: integer
+          format: int64
+        name:
+          type: string
+          description: Снимок названия на момент заказа
+        price:
+          type: integer
+          description: Снимок цены на момент заказа
+        quantity:
+          type: integer
+          minimum: 1
+        image:
+          type: string
+          nullable: true
+
+    Order:
+      type: object
+      required: [id, status, total, createdAt, items]
+      properties:
+        id:
+          type: integer
+          format: int64
+        status:
+          $ref: '#/components/schemas/OrderStatus'
+        total:
+          type: integer
+          description: Пересчитанная сервером сумма
+        createdAt:
+          type: string
+          format: date-time
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderItem'
+
+    CreateOrderInput:
+      type: object
+      required: [items, paymentMethod]
+      properties:
+        items:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [productId, quantity]
+            properties:
+              productId:
+                type: integer
+                format: int64
+              quantity:
+                type: integer
+                minimum: 1
+                maximum: 99
+        paymentMethod:
+          type: string
+          enum: [card, applepay]
+        paymentToken:
+          type: string
+          description: |
+            Токен платёжного провайдера. Данные карты на бэкенд Nuvio не попадают.
+        comment:
+          type: string
+          maxLength: 500
+
+    ProductPage:
+      type: object
+      required: [items, total, limit, offset]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Product'
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    NewsPage:
+      type: object
+      required: [items, total, limit, offset]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/NewsItem'
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    OrderPage:
+      type: object
+      required: [items, total, limit, offset]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Order'
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    ApiError:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              description: Машиночитаемый код
+              enum:
+                - validation_error
+                - invalid_credentials
+                - email_taken
+                - unauthorized
+                - forbidden
+                - not_found
+                - stock_changed
+                - rate_limited
+                - server_error
+            message:
+              type: string
+              description: Текст для показа пользователю (на русском)
+            fields:
+              type: object
+              additionalProperties:
+                type: string
+              description: Ошибки по полям формы, ключ — имя поля
