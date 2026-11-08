@@ -1,0 +1,15 @@
+README.md merge=union
+OWNERS.md merge=union
+openapi.yaml merge=union
+src/types/index.ts merge=union
+src/api/*.ts merge=union
+src/context/*.tsx merge=union
+src/hooks/*.ts merge=union
+
+# Остальные исходники — обычное построчное слияние
+*.ts text eol=lf
+*.tsx text eol=lf
+*.css text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.yaml text eol=lf
