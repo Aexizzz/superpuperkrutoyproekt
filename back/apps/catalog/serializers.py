@@ -1,3 +1,9 @@
 from rest_framework import serializers
 
-# Create your serializers here.
+from apps.catalog.models import Product
+
+
+class ProductSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Product
+        fields = ["id", "name", "category", "price", "image", "description", "detail"]
