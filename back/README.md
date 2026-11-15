@@ -48,9 +48,3 @@ JSON в API — camelCase (`djangorestframework-camel-case`), как в `front/s
 | GET / POST | `/orders` | авторизован | `getOrders` / оформление заказа |
 
 Авторизация: `Authorization: Bearer <accessToken>` из ответа login/register.
-
-## Что дальше
-
-- PostgreSQL вместо SQLite
-- пагинация и django-filter, когда данных станет больше
-- оплата заказов, загрузка картинок, тесты (`APITestCase`)
