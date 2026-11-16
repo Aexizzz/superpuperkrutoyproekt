@@ -9,10 +9,14 @@ class NewsSectionSerializer(serializers.Serializer):
 
 
 class NewsSerializer(serializers.ModelSerializer):
-    gallery = serializers.ListField(child=serializers.CharField(), required=False)
+    gallery = serializers.ListField(child=serializers.CharField(), required=False, allow_null=True)
+
+    def validate_gallery(self, value):
+        return value or []
     sections = NewsSectionSerializer(many=True, required=False)
 
     class Meta:
         model = News
-        fields = ["id", "title", "category", "date", "views", "image", "gallery", "sections"]
-        read_only_fields = ["id", "date", "views"]
+        fields = ["id", "title", "category", "published_at", "views", "image", "gallery", "sections"]
+        read_only_fields = ["id", "views"]
+        extra_kwargs = {"published_at": {"required": False}}

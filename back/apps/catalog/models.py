@@ -15,6 +15,8 @@ class Product(models.Model):
     image = models.CharField("Картинка", max_length=500, blank=True, null=True)  # путь вида /images/...
     description = models.TextField("Описание", blank=True, default="")
     detail = models.TextField("Подробности", blank=True, null=True)
+    in_stock = models.BooleanField("В наличии", default=True, db_index=True)
+    created_at = models.DateTimeField("Создан", auto_now_add=True, null=True)
 
     class Meta:
         ordering = ["id"]

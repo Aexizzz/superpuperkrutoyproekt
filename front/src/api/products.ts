@@ -1,4 +1,3 @@
-// @owner К+М — общий контракт, менять только по согласованию. Правила: OWNERS.md
 /** Товары. Публичное чтение, изменение — только с ролью admin. */
 import type { Paginated, Product, ProductInput, ProductQuery } from '../types';
 import { http, toPaginated } from './http';

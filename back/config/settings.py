@@ -25,6 +25,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     # сторонние
     "rest_framework",
+    "rest_framework_simplejwt.token_blacklist",
     "corsheaders",
     # проект
     "apps.users",
@@ -103,12 +104,24 @@ REST_FRAMEWORK = {
         "djangorestframework_camel_case.parser.CamelCaseJSONParser",
     ],
     "JSON_UNDERSCOREIZE": {"no_underscore_before_number": True},
+    # ошибки в формате {"error": {"code", "message", "fields"}} — см. front/docs/API.md
+    "EXCEPTION_HANDLER": "apps.common.exceptions.exception_handler",
+    # списки — {"items", "total", "limit", "offset"}
+    "DEFAULT_PAGINATION_CLASS": "apps.common.pagination.ItemsPagination",
+    # ограничение попыток входа/регистрации
+    "DEFAULT_THROTTLE_RATES": {"auth": "10/min"},
 }
 
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=int(os.getenv("ACCESS_TOKEN_LIFETIME_MINUTES", "1440"))),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=30),
+    # при refresh выдаём новую пару, старый refresh-токен отзывается
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": True,
+    "UPDATE_LAST_LOGIN": False,
 }
 
 # --- CORS ---
+# В dev фронт ходит через прокси Vite (тот же origin), CORS нужен только при прямых запросах.
 CORS_ALLOWED_ORIGINS = env_list("CORS_ALLOWED_ORIGINS", "http://localhost:5173")
+CORS_ALLOW_CREDENTIALS = True  # фронт шлёт credentials: "include"

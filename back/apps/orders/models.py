@@ -4,14 +4,22 @@ from django.db import models
 
 class Order(models.Model):
     class Status(models.TextChoices):
-        CREATED = "Оформлен"
-        PAID = "Оплачен"
-        SHIPPED = "Доставляется"
-        DELIVERED = "Доставлен"
-        CANCELLED = "Отменён"
+        # значения — как OrderStatus во front/src/types
+        PENDING = "pending", "Ожидает оплаты"
+        PAID = "paid", "Оплачен"
+        SHIPPED = "shipped", "Доставляется"
+        DELIVERED = "delivered", "Доставлен"
+        CANCELLED = "cancelled", "Отменён"
+
+    class PaymentMethod(models.TextChoices):
+        CARD = "card", "Карта"
+        APPLEPAY = "applepay", "Apple Pay"
 
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="orders")
-    status = models.CharField("Статус", max_length=20, choices=Status.choices, default=Status.CREATED)
+    status = models.CharField("Статус", max_length=20, choices=Status.choices, default=Status.PENDING)
+    payment_method = models.CharField("Способ оплаты", max_length=20, choices=PaymentMethod.choices, default=PaymentMethod.CARD)
+    provider_payment_id = models.CharField("ID платежа у провайдера", max_length=200, blank=True, default="")
+    comment = models.TextField("Комментарий", blank=True, default="")
     total = models.PositiveIntegerField("Сумма, ₽", default=0)
     created_at = models.DateTimeField("Создан", auto_now_add=True)
 

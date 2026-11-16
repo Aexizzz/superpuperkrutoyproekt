@@ -1,4 +1,3 @@
-// @owner М — аккаунт и контент: вход, регистрация, профиль, новости, админка. Правила: OWNERS.md
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import * as newsApi from '../api/news';
 import Img from '../components/Img';

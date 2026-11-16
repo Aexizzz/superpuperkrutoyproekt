@@ -3,6 +3,7 @@
 from django.core.management.base import BaseCommand
 
 from apps.catalog.models import Product
+from apps.news.models import News
 from apps.users.models import User
 
 ADMIN_EMAIL = "admin@nuvio.ru"
@@ -23,8 +24,36 @@ PRODUCTS = [
 ]
 
 
+N = News.Category
+NEWS = [
+    (
+        "Обзор Google FitBit Air",
+        N.REVIEWS,
+        "/images/news-fitbit.jpg",
+        ["/images/news-fitbit-2.jpg", "/images/news-fitbit-3.jpg", "/images/news-fitbit-4.jpg"],
+        [
+            {"heading": "Не умные часы", "paragraphs": ["Тестовая статья для разработки.", "Замените её в админке."]},
+        ],
+    ),
+    (
+        "Как выбрать iMac под свои задачи",
+        N.TIPS,
+        "/images/news-imac.jpg",
+        [],
+        [{"heading": "Коротко", "paragraphs": ["Тестовая статья для разработки."]}],
+    ),
+    (
+        "Главное с осенней презентации",
+        N.COLLECTIONS,
+        "/images/news-event.jpg",
+        [],
+        [{"heading": "Коротко", "paragraphs": ["Тестовая статья для разработки."]}],
+    ),
+]
+
+
 class Command(BaseCommand):
-    help = "Создаёт администратора и тестовые товары"
+    help = "Создаёт администратора, тестовые товары и новости"
 
     def handle(self, *args, **options):
         if not User.objects.filter(email=ADMIN_EMAIL).exists():
@@ -33,4 +62,7 @@ class Command(BaseCommand):
             Product.objects.bulk_create(
                 Product(name=n, category=c, price=p, image=i, description=d) for n, c, p, i, d in PRODUCTS
             )
+        if not News.objects.exists():
+            for title, category, image, gallery, sections in NEWS:
+                News.objects.create(title=title, category=category, image=image, gallery=gallery, sections=sections)
         self.stdout.write(self.style.SUCCESS("Seed done"))

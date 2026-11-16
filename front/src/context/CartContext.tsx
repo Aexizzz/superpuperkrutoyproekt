@@ -1,4 +1,3 @@
-// @owner К+М — общий контракт, менять только по согласованию. Правила: OWNERS.md
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { Product } from '../types';

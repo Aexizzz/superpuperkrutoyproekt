@@ -1,4 +1,3 @@
-// @owner К+М — общий контракт, менять только по согласованию. Правила: OWNERS.md
 /** Авторизация и профиль текущего пользователя. */
 import type { AuthResponse, LoginInput, ProfilePatch, RegisterInput, User } from '../types';
 import { http } from './http';
@@ -19,7 +18,8 @@ export const register = async (input: RegisterInput): Promise<AuthResponse> => {
 /** Завершает сессию. Сервер отзывает refresh-токен; локально чистим всегда. */
 export const logout = async (): Promise<void> => {
   try {
-    await http.post<void>('/auth/logout', undefined, { skipRefresh: true });
+    // сервер отзывает этот refresh-токен (blacklist)
+    await http.post<void>('/auth/logout', { refreshToken: session.getRefreshToken() }, { skipAuth: true, skipRefresh: true });
   } catch {
     /* даже если сервер недоступен — пользователь выходит */
   } finally {

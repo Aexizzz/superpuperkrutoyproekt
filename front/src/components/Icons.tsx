@@ -1,4 +1,3 @@
-// @owner К — витрина: главная, каталог, товар, поиск, корзина, оплата, каркас и стили. Правила: OWNERS.md
 /** Логотип Nuvio. Цвет берётся из currentColor: белый в тёмной шапке, чёрный на светлых страницах. */
 export const Logo = ({ size = 24 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">

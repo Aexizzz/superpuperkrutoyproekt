@@ -1,4 +1,3 @@
-// @owner К — витрина: главная, каталог, товар, поиск, корзина, оплата, каркас и стили. Правила: OWNERS.md
 import type { ReactNode } from 'react';
 import { ApiError } from '../api/http';
 

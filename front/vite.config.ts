@@ -5,7 +5,7 @@ import { defineConfig, loadEnv } from 'vite'
 export default defineConfig(({ mode }) => {
   // .env, .env.local и т.д. — читаем тем же механизмом, что и клиент
   const env = loadEnv(mode, process.cwd(), '')
-  const proxyTarget = env.VITE_PROXY_TARGET || 'http://localhost:3000'
+  const proxyTarget = env.VITE_PROXY_TARGET || 'http://localhost:8000'
 
   return {
     plugins: [react()],

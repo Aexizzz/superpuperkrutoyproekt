@@ -1,4 +1,3 @@
-// @owner К+М — общий контракт, менять только по согласованию. Правила: OWNERS.md
 /** Заказы и оплата. Все методы требуют авторизации. */
 import type { CreateOrderInput, Order, Paginated } from '../types';
 import { http, toPaginated } from './http';

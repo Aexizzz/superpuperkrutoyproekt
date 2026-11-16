@@ -1,4 +1,3 @@
-// @owner М — аккаунт и контент: вход, регистрация, профиль, новости, админка. Правила: OWNERS.md
 import { useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';

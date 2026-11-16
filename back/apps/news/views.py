@@ -12,11 +12,14 @@ class NewsViewSet(viewsets.ModelViewSet):
 
     serializer_class = NewsSerializer
     permission_classes = [IsAdminOrReadOnly]
+    http_method_names = ["get", "post", "patch", "delete", "head", "options"]
 
     def get_queryset(self):
         qs = News.objects.all()
         if category := self.request.query_params.get("category"):
             qs = qs.filter(category=category)
+        if q := self.request.query_params.get("q"):
+            qs = qs.filter(title__icontains=q)
         return qs
 
     def retrieve(self, request, *args, **kwargs):
